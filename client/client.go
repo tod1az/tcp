@@ -27,7 +27,11 @@ func StartClient() {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	go writeMessage(conn, name)
+	_, err = conn.Write([]byte(name))
+	if err != nil {
+		fmt.Print("Error leyendo su mensaje, intente de nuevo:")
+	}
+	go writeMessage(conn)
 	go readMessage(conn)
 	select {}
 }
@@ -46,12 +50,10 @@ func readMessage(conn net.Conn) {
 		fmt.Println(string(buffer[:ln]))
 	}
 }
-func writeMessage(conn net.Conn, name string) {
+func writeMessage(conn net.Conn) {
 
 	var message string
 	for {
-
-		fmt.Print("Mensaje: ")
 		scanner := bufio.NewScanner(os.Stdin)
 		if scanner.Scan() {
 			message = scanner.Text()
@@ -63,7 +65,7 @@ func writeMessage(conn net.Conn, name string) {
 			os.Exit(1)
 			break
 		}
-		_, err := conn.Write([]byte(name + ": " + message))
+		_, err := conn.Write([]byte(message))
 		if err != nil {
 			fmt.Print("Error leyendo su mensaje, intente de nuevo:")
 			continue
