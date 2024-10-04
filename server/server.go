@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 	"net"
-	"strings"
 )
 
 var PORT = "6969"
@@ -30,14 +29,15 @@ func StartServer() {
 		if err != nil {
 			fmt.Println(err.Error())
 		}
-		users[conn.RemoteAddr()] = User{conn: conn, name: ""}
 
 		go handleRequest(conn)
 	}
 }
+
 func handleRequest(conn net.Conn) {
 
 	addr := conn.RemoteAddr()
+	users[addr] = User{conn: conn, name: ""}
 	currentUser := users[addr]
 	for {
 		buffer := make([]byte, 1042)
@@ -46,7 +46,9 @@ func handleRequest(conn net.Conn) {
 		if err != nil {
 			if err.Error() == "EOF" {
 				if currentUser.name != "" {
-					fmt.Printf("%v, se ha desconectado \n", currentUser.name)
+					SendToAllUsers(addr, currentUser.name+", se ha desconectado \n")
+					conn.Close()
+					delete(users, addr)
 				}
 				break
 			}
@@ -56,17 +58,23 @@ func handleRequest(conn net.Conn) {
 
 		message := string(buffer[:n])
 		if currentUser.name == "" {
-			currentUser.name = strings.Split(message, ":")[0]
+			currentUser.name = message
 			users[addr] = currentUser
+			SendToAllUsers(addr, message+", se ha conectado")
+		} else {
+			fmt.Println("Mensaje Recibido: " + message)
+			SendToAllUsers(addr, currentUser.name+": "+message)
 		}
 
-		fmt.Println("Mensaje Recibido: " + message)
-		for key, value := range users {
-			if key != addr {
-				_, err := value.conn.Write([]byte(message))
-				if err != nil {
-					fmt.Println(err.Error())
-				}
+	}
+}
+
+func SendToAllUsers(currentAddr net.Addr, message string) {
+	for key, value := range users {
+		if key != currentAddr {
+			_, err := value.conn.Write([]byte(message))
+			if err != nil {
+				fmt.Println(err.Error())
 			}
 		}
 	}
