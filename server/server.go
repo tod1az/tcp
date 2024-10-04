@@ -5,40 +5,51 @@ import (
 	"net"
 )
 
-var PORT = "6969"
-var HOST = "localhost"
-var TYPE = "tcp"
-
 type User struct {
 	name string
 	conn net.Conn
 }
 
-var users = make(map[net.Addr]User)
+type Server struct {
+	Port  string
+	Host  string
+	Users map[net.Addr]User
+}
 
-func StartServer() {
-
-	listener, err := net.Listen("tcp", HOST+":"+PORT)
-	if err != nil {
-		fmt.Println(err.Error())
+func CreateServer(host, port string) *Server {
+	return &Server{
+		Host:  host,
+		Port:  port,
+		Users: make(map[net.Addr]User),
 	}
+}
+
+func (s *Server) CreateListener() (net.Listener, error) {
+	listener, err := net.Listen("tcp", s.Host+":"+s.Port)
+	if err != nil {
+		return nil, err
+	}
+	return listener, nil
+}
+
+func (s *Server) ListenForMessages(listener net.Listener) {
 	defer listener.Close()
-	fmt.Printf("Listening on port: %v \n", PORT)
+	fmt.Printf("Listening on port: %v\n", s.Port)
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			fmt.Println(err.Error())
 		}
 
-		go handleRequest(conn)
+		go s.HandleRequest(conn)
 	}
 }
 
-func handleRequest(conn net.Conn) {
+func (s *Server) HandleRequest(conn net.Conn) {
 
 	addr := conn.RemoteAddr()
-	users[addr] = User{conn: conn, name: ""}
-	currentUser := users[addr]
+	s.Users[addr] = User{conn: conn, name: ""}
+	currentUser := s.Users[addr]
 	for {
 		buffer := make([]byte, 1042)
 		n, err := conn.Read(buffer)
@@ -46,9 +57,9 @@ func handleRequest(conn net.Conn) {
 		if err != nil {
 			if err.Error() == "EOF" {
 				if currentUser.name != "" {
-					SendToAllUsers(addr, currentUser.name+", se ha desconectado \n")
+					s.SendToAllUsers(addr, currentUser.name+", se ha desconectado\n")
 					conn.Close()
-					delete(users, addr)
+					delete(s.Users, addr)
 				}
 				break
 			}
@@ -59,18 +70,18 @@ func handleRequest(conn net.Conn) {
 		message := string(buffer[:n])
 		if currentUser.name == "" {
 			currentUser.name = message
-			users[addr] = currentUser
-			SendToAllUsers(addr, message+", se ha conectado")
+			s.Users[addr] = currentUser
+			s.SendToAllUsers(addr, message+", se ha conectado\n")
 		} else {
 			fmt.Println("Mensaje Recibido: " + message)
-			SendToAllUsers(addr, currentUser.name+": "+message)
+			s.SendToAllUsers(addr, currentUser.name+": "+message)
 		}
 
 	}
 }
 
-func SendToAllUsers(currentAddr net.Addr, message string) {
-	for key, value := range users {
+func (s *Server) SendToAllUsers(currentAddr net.Addr, message string) {
+	for key, value := range s.Users {
 		if key != currentAddr {
 			_, err := value.conn.Write([]byte(message))
 			if err != nil {
