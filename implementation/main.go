@@ -2,6 +2,7 @@ package implementations
 
 import (
 	"fmt"
+	"sync"
 	"tcp/client"
 	"tcp/server"
 )
@@ -20,8 +21,10 @@ func ClientImplementation(name, host, port string) {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
+	var wg sync.WaitGroup
+	wg.Add(2)
 	c.SendName()
-	go c.ReadMessages()
-	go c.WriteMessages()
-	select {}
+	go c.ReadMessages(&wg)
+	go c.WriteMessages(&wg)
+	wg.Wait()
 }
