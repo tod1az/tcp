@@ -11,16 +11,18 @@ type User struct {
 }
 
 type Server struct {
-	Port  string
-	Host  string
-	Users map[net.Addr]User
+	Port      string
+	Host      string
+	Users     map[net.Addr]User
+	StopChann chan struct{}
 }
 
 func CreateServer(host, port string) *Server {
 	return &Server{
-		Host:  host,
-		Port:  port,
-		Users: make(map[net.Addr]User),
+		Host:      host,
+		Port:      port,
+		Users:     make(map[net.Addr]User),
+		StopChann: make(chan struct{}),
 	}
 }
 
@@ -36,12 +38,21 @@ func (s *Server) ListenForMessages(listener net.Listener) {
 	defer listener.Close()
 	fmt.Printf("Listening on port: %v\n", s.Port)
 	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			fmt.Println(err.Error())
-		}
+		select {
+		case <-s.StopChann:
+			fmt.Println("Deteniendo el servidor")
+			s.SendToAllUsers("Deteniendo el servidor")
+			listener.Close()
+			return
 
-		go s.HandleRequest(conn)
+		default:
+			conn, err := listener.Accept()
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+
+			go s.HandleRequest(conn)
+		}
 	}
 }
 
@@ -57,7 +68,7 @@ func (s *Server) HandleRequest(conn net.Conn) {
 		if err != nil {
 			if err.Error() == "EOF" {
 				if currentUser.name != "" {
-					s.SendToAllUsers(addr, currentUser.name+", se ha desconectado\n")
+					s.SendToOtherUsers(addr, currentUser.name+", se ha desconectado\n")
 					conn.Close()
 					delete(s.Users, addr)
 				}
@@ -71,16 +82,17 @@ func (s *Server) HandleRequest(conn net.Conn) {
 		if currentUser.name == "" {
 			currentUser.name = message
 			s.Users[addr] = currentUser
-			s.SendToAllUsers(addr, message+", se ha conectado\n")
+			s.SendToOtherUsers(addr, message+", se ha conectado\n")
+			fmt.Printf("Addres: %v Name: %v connected\n", addr, currentUser.name)
 		} else {
 			fmt.Println("Mensaje Recibido: " + message)
-			s.SendToAllUsers(addr, currentUser.name+": "+message)
+			s.SendToOtherUsers(addr, currentUser.name+": "+message)
 		}
 
 	}
 }
 
-func (s *Server) SendToAllUsers(currentAddr net.Addr, message string) {
+func (s *Server) SendToOtherUsers(currentAddr net.Addr, message string) {
 	for key, value := range s.Users {
 		if key != currentAddr {
 			_, err := value.conn.Write([]byte(message))
@@ -89,4 +101,17 @@ func (s *Server) SendToAllUsers(currentAddr net.Addr, message string) {
 			}
 		}
 	}
+}
+
+func (s *Server) SendToAllUsers(message string) {
+	for _, value := range s.Users {
+		_, err := value.conn.Write([]byte(message))
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+	}
+}
+
+func (s *Server) StopServer() {
+	close(s.StopChann)
 }
