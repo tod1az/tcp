@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 )
 
 type Client struct {
@@ -26,22 +27,24 @@ func (c *Client) SendName() {
 		fmt.Print("Error leyendo su mensaje, intente de nuevo:")
 	}
 }
-func (c *Client) ReadMessages() {
+func (c *Client) ReadMessages(wg *sync.WaitGroup) {
 	for {
 		buffer := make([]byte, 1024)
 		ln, err := c.Conn.Read(buffer)
 		if err != nil {
-			fmt.Println(err.Error())
 			if err.Error() == "EOF" {
 				c.Conn.Close()
 				fmt.Println("Conexion terminada")
+				wg.Done()
 				break
+			} else {
+				fmt.Println(err.Error())
 			}
 		}
 		fmt.Println(string(buffer[:ln]))
 	}
 }
-func (c *Client) WriteMessages() {
+func (c *Client) WriteMessages(wg *sync.WaitGroup) {
 	var message string
 	for {
 		scanner := bufio.NewScanner(os.Stdin)
@@ -51,7 +54,7 @@ func (c *Client) WriteMessages() {
 
 		if message == "close" {
 			c.Conn.Close()
-			fmt.Println("Conexion cerrada")
+			wg.Done()
 			os.Exit(1)
 		}
 		_, err := c.Conn.Write([]byte(message))
